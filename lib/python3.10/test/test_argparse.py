@@ -1,8 +1,6 @@
 # Author: Steven J. Bethard <steven.bethard@gmail.com>.
 
 import inspect
-import io
-import operator
 import os
 import shutil
 import stat
@@ -12,27 +10,12 @@ import tempfile
 import unittest
 import argparse
 
+from io import StringIO
+
 from test.support import os_helper
 from unittest import mock
-
-
-class StdIOBuffer(io.TextIOWrapper):
-    '''Replacement for writable io.StringIO that behaves more like real file
-
-    Unlike StringIO, provides a buffer attribute that holds the underlying
-    binary data, allowing it to replace sys.stdout/sys.stderr in more
-    contexts.
-    '''
-
-    def __init__(self, initial_value='', newline='\n'):
-        initial_value = initial_value.encode('utf-8')
-        super().__init__(io.BufferedWriter(io.BytesIO(initial_value)),
-                         'utf-8', newline=newline)
-
-    def getvalue(self):
-        self.flush()
-        return self.buffer.raw.getvalue().decode('utf-8')
-
+class StdIOBuffer(StringIO):
+    pass
 
 class TestCase(unittest.TestCase):
 
@@ -59,14 +42,11 @@ class TempDirMixin(object):
                 os.chmod(os.path.join(self.temp_dir, name), stat.S_IWRITE)
         shutil.rmtree(self.temp_dir, True)
 
-    def create_writable_file(self, filename):
+    def create_readonly_file(self, filename):
         file_path = os.path.join(self.temp_dir, filename)
         with open(file_path, 'w', encoding="utf-8") as file:
             file.write(filename)
-        return file_path
-
-    def create_readonly_file(self, filename):
-        os.chmod(self.create_writable_file(filename), stat.S_IREAD)
+        os.chmod(file_path, stat.S_IREAD)
 
 class Sig(object):
 
@@ -116,18 +96,13 @@ def stderr_to_parser_error(parse_args, *args, **kwargs):
         try:
             result = parse_args(*args, **kwargs)
             for key in list(vars(result)):
-                attr = getattr(result, key)
-                if attr is sys.stdout:
+                if getattr(result, key) is sys.stdout:
                     setattr(result, key, old_stdout)
-                elif attr is sys.stdout.buffer:
-                    setattr(result, key, getattr(old_stdout, 'buffer', BIN_STDOUT_SENTINEL))
-                elif attr is sys.stderr:
+                if getattr(result, key) is sys.stderr:
                     setattr(result, key, old_stderr)
-                elif attr is sys.stderr.buffer:
-                    setattr(result, key, getattr(old_stderr, 'buffer', BIN_STDERR_SENTINEL))
             return result
-        except SystemExit as e:
-            code = e.code
+        except SystemExit:
+            code = sys.exc_info()[1].code
             stdout = sys.stdout.getvalue()
             stderr = sys.stderr.getvalue()
             raise ArgumentParserError(
@@ -1570,40 +1545,16 @@ class TestFileTypeRepr(TestCase):
         type = argparse.FileType('r', 1, errors='replace')
         self.assertEqual("FileType('r', 1, errors='replace')", repr(type))
 
-
-BIN_STDOUT_SENTINEL = object()
-BIN_STDERR_SENTINEL = object()
-
-
 class StdStreamComparer:
     def __init__(self, attr):
-        # We try to use the actual stdXXX.buffer attribute as our
-        # marker, but but under some test environments,
-        # sys.stdout/err are replaced by io.StringIO which won't have .buffer,
-        # so we use a sentinel simply to show that the tests do the right thing
-        # for any buffer supporting object
-        self.getattr = operator.attrgetter(attr)
-        if attr == 'stdout.buffer':
-            self.backupattr = BIN_STDOUT_SENTINEL
-        elif attr == 'stderr.buffer':
-            self.backupattr = BIN_STDERR_SENTINEL
-        else:
-            self.backupattr = object() # Not equal to anything
+        self.attr = attr
 
     def __eq__(self, other):
-        try:
-            return other == self.getattr(sys)
-        except AttributeError:
-            return other == self.backupattr
-
+        return other == getattr(sys, self.attr)
 
 eq_stdin = StdStreamComparer('stdin')
 eq_stdout = StdStreamComparer('stdout')
 eq_stderr = StdStreamComparer('stderr')
-eq_bstdin = StdStreamComparer('stdin.buffer')
-eq_bstdout = StdStreamComparer('stdout.buffer')
-eq_bstderr = StdStreamComparer('stderr.buffer')
-
 
 class RFile(object):
     seen = {}
@@ -1682,7 +1633,7 @@ class TestFileTypeRB(TempDirMixin, ParserTestCase):
         ('foo', NS(x=None, spam=RFile('foo'))),
         ('-x foo bar', NS(x=RFile('foo'), spam=RFile('bar'))),
         ('bar -x foo', NS(x=RFile('foo'), spam=RFile('bar'))),
-        ('-x - -', NS(x=eq_bstdin, spam=eq_bstdin)),
+        ('-x - -', NS(x=eq_stdin, spam=eq_stdin)),
     ]
 
 
@@ -1709,9 +1660,8 @@ class TestFileTypeW(TempDirMixin, ParserTestCase):
     """Test the FileType option/argument type for writing files"""
 
     def setUp(self):
-        super().setUp()
+        super(TestFileTypeW, self).setUp()
         self.create_readonly_file('readonly')
-        self.create_writable_file('writable')
 
     argument_signatures = [
         Sig('-x', type=argparse.FileType('w')),
@@ -1720,37 +1670,13 @@ class TestFileTypeW(TempDirMixin, ParserTestCase):
     failures = ['-x', '', 'readonly']
     successes = [
         ('foo', NS(x=None, spam=WFile('foo'))),
-        ('writable', NS(x=None, spam=WFile('writable'))),
         ('-x foo bar', NS(x=WFile('foo'), spam=WFile('bar'))),
         ('bar -x foo', NS(x=WFile('foo'), spam=WFile('bar'))),
         ('-x - -', NS(x=eq_stdout, spam=eq_stdout)),
     ]
 
-@unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0,
-                 "non-root user required")
-class TestFileTypeX(TempDirMixin, ParserTestCase):
-    """Test the FileType option/argument type for writing new files only"""
 
-    def setUp(self):
-        super().setUp()
-        self.create_readonly_file('readonly')
-        self.create_writable_file('writable')
-
-    argument_signatures = [
-        Sig('-x', type=argparse.FileType('x')),
-        Sig('spam', type=argparse.FileType('x')),
-    ]
-    failures = ['-x', '', 'readonly', 'writable']
-    successes = [
-        ('-x foo bar', NS(x=WFile('foo'), spam=WFile('bar'))),
-        ('-x - -', NS(x=eq_stdout, spam=eq_stdout)),
-    ]
-
-
-@unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0,
-                 "non-root user required")
 class TestFileTypeWB(TempDirMixin, ParserTestCase):
-    """Test the FileType option/argument type for writing binary files"""
 
     argument_signatures = [
         Sig('-x', type=argparse.FileType('wb')),
@@ -1761,22 +1687,7 @@ class TestFileTypeWB(TempDirMixin, ParserTestCase):
         ('foo', NS(x=None, spam=WFile('foo'))),
         ('-x foo bar', NS(x=WFile('foo'), spam=WFile('bar'))),
         ('bar -x foo', NS(x=WFile('foo'), spam=WFile('bar'))),
-        ('-x - -', NS(x=eq_bstdout, spam=eq_bstdout)),
-    ]
-
-
-@unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0,
-                 "non-root user required")
-class TestFileTypeXB(TestFileTypeX):
-    "Test the FileType option/argument type for writing new binary files only"
-
-    argument_signatures = [
-        Sig('-x', type=argparse.FileType('xb')),
-        Sig('spam', type=argparse.FileType('xb')),
-    ]
-    successes = [
-        ('-x foo bar', NS(x=WFile('foo'), spam=WFile('bar'))),
-        ('-x - -', NS(x=eq_bstdout, spam=eq_bstdout)),
+        ('-x - -', NS(x=eq_stdout, spam=eq_stdout)),
     ]
 
 
@@ -1919,7 +1830,8 @@ class TestActionUserDefined(ParserTestCase):
                     raise AssertionError('value: %s' % value)
                 assert expected_ns == namespace, ('expected %s, got %s' %
                                                   (expected_ns, namespace))
-            except AssertionError as e:
+            except AssertionError:
+                e = sys.exc_info()[1]
                 raise ArgumentParserError('opt_action failed: %s' % e)
             setattr(namespace, 'spam', value)
 
@@ -1944,7 +1856,8 @@ class TestActionUserDefined(ParserTestCase):
                     raise AssertionError('value: %s' % value)
                 assert expected_ns == namespace, ('expected %s, got %s' %
                                                   (expected_ns, namespace))
-            except AssertionError as e:
+            except AssertionError:
+                e = sys.exc_info()[1]
                 raise ArgumentParserError('arg_action failed: %s' % e)
             setattr(namespace, 'badger', value)
 
@@ -2668,13 +2581,6 @@ class TestMutuallyExclusiveGroupErrors(TestCase):
               --nuts
               '''
         self.assertEqual(parser.format_help(), textwrap.dedent(expected))
-
-    def test_empty_group(self):
-        # See issue 26952
-        parser = argparse.ArgumentParser()
-        group = parser.add_mutually_exclusive_group()
-        with self.assertRaises(ValueError):
-            parser.parse_args(['-h'])
 
 class MEMixin(object):
 
@@ -3686,8 +3592,6 @@ class TestHelpUsage(HelpTestCase):
         Sig('--bar', help='Whether to bar', default=True,
                      action=argparse.BooleanOptionalAction),
         Sig('-f', '--foobar', '--barfoo', action=argparse.BooleanOptionalAction),
-        Sig('--bazz', action=argparse.BooleanOptionalAction,
-                      default=argparse.SUPPRESS, help='Bazz!'),
     ]
     argument_group_signatures = [
         (Sig('group'), [
@@ -3700,8 +3604,8 @@ class TestHelpUsage(HelpTestCase):
     usage = '''\
         usage: PROG [-h] [-w W [W ...]] [-x [X ...]] [--foo | --no-foo]
                     [--bar | --no-bar]
-                    [-f | --foobar | --no-foobar | --barfoo | --no-barfoo]
-                    [--bazz | --no-bazz] [-y [Y]] [-z Z Z Z]
+                    [-f | --foobar | --no-foobar | --barfoo | --no-barfoo] [-y [Y]]
+                    [-z Z Z Z]
                     a b b [c] [d ...] e [e ...]
         '''
     help = usage + '''\
@@ -3718,7 +3622,6 @@ class TestHelpUsage(HelpTestCase):
           --foo, --no-foo       Whether to foo
           --bar, --no-bar       Whether to bar (default: True)
           -f, --foobar, --no-foobar, --barfoo, --no-barfoo
-          --bazz, --no-bazz     Bazz!
 
         group:
           -y [Y]                y

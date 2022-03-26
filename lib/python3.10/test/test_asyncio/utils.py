@@ -409,13 +409,12 @@ class TestLoop(base_events.BaseEventLoop):
             return False
 
     def assert_writer(self, fd, callback, *args):
-        if fd not in self.writers:
-            raise AssertionError(f'fd {fd} is not registered')
+        assert fd in self.writers, 'fd {} is not registered'.format(fd)
         handle = self.writers[fd]
-        if handle._callback != callback:
-            raise AssertionError(f'{handle._callback!r} != {callback!r}')
-        if handle._args != args:
-            raise AssertionError(f'{handle._args!r} != {args!r}')
+        assert handle._callback == callback, '{!r} != {!r}'.format(
+            handle._callback, callback)
+        assert handle._args == args, '{!r} != {!r}'.format(
+            handle._args, args)
 
     def _ensure_fd_no_transport(self, fd):
         if not isinstance(fd, int):
@@ -531,8 +530,7 @@ class TestCase(unittest.TestCase):
                         thread.join()
 
     def set_event_loop(self, loop, *, cleanup=True):
-        if loop is None:
-            raise AssertionError('loop is None')
+        assert loop is not None
         # ensure that the event loop is passed explicitly in asyncio
         events.set_event_loop(None)
         if cleanup:

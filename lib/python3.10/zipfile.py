@@ -721,9 +721,7 @@ class _SharedFile:
         self._lock = lock
         self._writing = writing
         self.seekable = file.seekable
-
-    def tell(self):
-        return self._pos
+        self.tell = file.tell
 
     def seek(self, offset, whence=0):
         with self._lock:
@@ -1123,15 +1121,8 @@ class _ZipWriteFile(io.BufferedIOBase):
     def write(self, data):
         if self.closed:
             raise ValueError('I/O operation on closed file.')
-
-        # Accept any data that supports the buffer protocol
-        if isinstance(data, (bytes, bytearray)):
-            nbytes = len(data)
-        else:
-            data = memoryview(data)
-            nbytes = data.nbytes
+        nbytes = len(data)
         self._file_size += nbytes
-
         self._crc = crc32(data, self._crc)
         if self._compressor:
             data = self._compressor.compress(data)

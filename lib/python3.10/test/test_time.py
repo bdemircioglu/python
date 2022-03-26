@@ -113,13 +113,12 @@ class TimeTestCase(unittest.TestCase):
         clk_id = time.pthread_getcpuclockid(threading.get_ident())
         self.assertTrue(type(clk_id) is int)
         # when in 32-bit mode AIX only returns the predefined constant
-        if platform.system() == "AIX" and (sys.maxsize.bit_length() <= 32):
-            self.assertEqual(clk_id, time.CLOCK_THREAD_CPUTIME_ID)
-        # Solaris returns CLOCK_THREAD_CPUTIME_ID when current thread is given
-        elif sys.platform.startswith("sunos"):
-            self.assertEqual(clk_id, time.CLOCK_THREAD_CPUTIME_ID)
-        else:
+        if not platform.system() == "AIX":
             self.assertNotEqual(clk_id, time.CLOCK_THREAD_CPUTIME_ID)
+        elif (sys.maxsize.bit_length() > 32):
+            self.assertNotEqual(clk_id, time.CLOCK_THREAD_CPUTIME_ID)
+        else:
+            self.assertEqual(clk_id, time.CLOCK_THREAD_CPUTIME_ID)
         t1 = time.clock_gettime(clk_id)
         t2 = time.clock_gettime(clk_id)
         self.assertLessEqual(t1, t2)
@@ -545,26 +544,20 @@ class TimeTestCase(unittest.TestCase):
         self.assertRaises(ValueError, time.ctime, float("nan"))
 
     def test_get_clock_info(self):
-        clocks = [
-            'monotonic',
-            'perf_counter',
-            'process_time',
-            'time',
-            'thread_time',
-        ]
+        clocks = ['monotonic', 'perf_counter', 'process_time', 'time']
 
         for name in clocks:
-            with self.subTest(name=name):
-                info = time.get_clock_info(name)
+            info = time.get_clock_info(name)
 
-                self.assertIsInstance(info.implementation, str)
-                self.assertNotEqual(info.implementation, '')
-                self.assertIsInstance(info.monotonic, bool)
-                self.assertIsInstance(info.resolution, float)
-                # 0.0 < resolution <= 1.0
-                self.assertGreater(info.resolution, 0.0)
-                self.assertLessEqual(info.resolution, 1.0)
-                self.assertIsInstance(info.adjustable, bool)
+            #self.assertIsInstance(info, dict)
+            self.assertIsInstance(info.implementation, str)
+            self.assertNotEqual(info.implementation, '')
+            self.assertIsInstance(info.monotonic, bool)
+            self.assertIsInstance(info.resolution, float)
+            # 0.0 < resolution <= 1.0
+            self.assertGreater(info.resolution, 0.0)
+            self.assertLessEqual(info.resolution, 1.0)
+            self.assertIsInstance(info.adjustable, bool)
 
         self.assertRaises(ValueError, time.get_clock_info, 'xxx')
 

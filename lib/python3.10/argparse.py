@@ -392,9 +392,6 @@ class HelpFormatter(object):
         group_actions = set()
         inserts = {}
         for group in groups:
-            if not group._group_actions:
-                raise ValueError(f'empty group {group}')
-
             try:
                 start = actions.index(group._group_actions[0])
             except ValueError:
@@ -726,7 +723,7 @@ def _get_action_name(argument):
     if argument is None:
         return None
     elif argument.option_strings:
-        return '/'.join(argument.option_strings)
+        return  '/'.join(argument.option_strings)
     elif argument.metavar not in (None, SUPPRESS):
         return argument.metavar
     elif argument.dest not in (None, SUPPRESS):
@@ -878,7 +875,7 @@ class BooleanOptionalAction(Action):
                 option_string = '--no-' + option_string[2:]
                 _option_strings.append(option_string)
 
-        if help is not None and default is not None and default is not SUPPRESS:
+        if help is not None and default is not None:
             help += " (default: %(default)s)"
 
         super().__init__(
@@ -1256,9 +1253,9 @@ class FileType(object):
         # the special argument "-" means sys.std{in,out}
         if string == '-':
             if 'r' in self._mode:
-                return _sys.stdin.buffer if 'b' in self._mode else _sys.stdin
-            elif any(c in self._mode for c in 'wax'):
-                return _sys.stdout.buffer if 'b' in self._mode else _sys.stdout
+                return _sys.stdin
+            elif 'w' in self._mode:
+                return _sys.stdout
             else:
                 msg = _('argument "-" with mode %r') % self._mode
                 raise ValueError(msg)
@@ -1672,8 +1669,7 @@ class ArgumentParser(_AttributeHolder, _ActionsContainer):
     """Object for parsing command line strings into Python objects.
 
     Keyword Arguments:
-        - prog -- The name of the program (default:
-            ``os.path.basename(sys.argv[0])``)
+        - prog -- The name of the program (default: sys.argv[0])
         - usage -- A usage message (default: auto-generated from arguments)
         - description -- A description of what the program does
         - epilog -- Text following the argument descriptions

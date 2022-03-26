@@ -7,7 +7,7 @@ import sys
 import threading
 import unittest
 from unittest import mock
-from types import GenericAlias
+
 import asyncio
 from asyncio import futures
 from test.test_asyncio import utils as test_utils
@@ -54,30 +54,30 @@ class DuckFuture:
                 or self.__exception is not None)
 
     def result(self):
-        self.assertFalse(self.cancelled())
+        assert not self.cancelled()
         if self.__exception is not None:
             raise self.__exception
         return self.__result
 
     def exception(self):
-        self.assertFalse(self.cancelled())
+        assert not self.cancelled()
         return self.__exception
 
     def set_result(self, result):
-        self.assertFalse(self.done())
-        self.assertIsNotNone(result)
+        assert not self.done()
+        assert result is not None
         self.__result = result
 
     def set_exception(self, exception):
-        self.assertFalse(self.done())
-        self.assertIsNotNone(exception)
+        assert not self.done()
+        assert exception is not None
         self.__exception = exception
 
     def __iter__(self):
         if not self.done():
             self._asyncio_future_blocking = True
             yield self
-        self.assertTrue(self.done())
+        assert self.done()
         return self.result()
 
 
@@ -91,12 +91,12 @@ class DuckTests(test_utils.TestCase):
     def test_wrap_future(self):
         f = DuckFuture()
         g = asyncio.wrap_future(f)
-        self.assertIs(g, f)
+        assert g is f
 
     def test_ensure_future(self):
         f = DuckFuture()
         g = asyncio.ensure_future(f)
-        self.assertIs(g, f)
+        assert g is f
 
 
 class BaseFutureTests:
@@ -108,11 +108,6 @@ class BaseFutureTests:
         super().setUp()
         self.loop = self.new_test_loop()
         self.addCleanup(self.loop.close)
-
-    def test_generic_alias(self):
-        future = self.cls[str]
-        self.assertEqual(future.__args__, (str,))
-        self.assertIsInstance(future, GenericAlias)
 
     def test_isfuture(self):
         class MyFuture:

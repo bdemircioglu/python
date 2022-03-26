@@ -87,27 +87,23 @@ class MyBaseProto(asyncio.Protocol):
             self.connected = loop.create_future()
             self.done = loop.create_future()
 
-    def _assert_state(self, *expected):
-        if self.state not in expected:
-            raise AssertionError(f'state: {self.state!r}, expected: {expected!r}')
-
     def connection_made(self, transport):
         self.transport = transport
-        self._assert_state('INITIAL')
+        assert self.state == 'INITIAL', self.state
         self.state = 'CONNECTED'
         if self.connected:
             self.connected.set_result(None)
 
     def data_received(self, data):
-        self._assert_state('CONNECTED')
+        assert self.state == 'CONNECTED', self.state
         self.nbytes += len(data)
 
     def eof_received(self):
-        self._assert_state('CONNECTED')
+        assert self.state == 'CONNECTED', self.state
         self.state = 'EOF'
 
     def connection_lost(self, exc):
-        self._assert_state('CONNECTED', 'EOF')
+        assert self.state in ('CONNECTED', 'EOF'), self.state
         self.state = 'CLOSED'
         if self.done:
             self.done.set_result(None)
@@ -128,24 +124,20 @@ class MyDatagramProto(asyncio.DatagramProtocol):
         if loop is not None:
             self.done = loop.create_future()
 
-    def _assert_state(self, expected):
-        if self.state != expected:
-            raise AssertionError(f'state: {self.state!r}, expected: {expected!r}')
-
     def connection_made(self, transport):
         self.transport = transport
-        self._assert_state('INITIAL')
+        assert self.state == 'INITIAL', self.state
         self.state = 'INITIALIZED'
 
     def datagram_received(self, data, addr):
-        self._assert_state('INITIALIZED')
+        assert self.state == 'INITIALIZED', self.state
         self.nbytes += len(data)
 
     def error_received(self, exc):
-        self._assert_state('INITIALIZED')
+        assert self.state == 'INITIALIZED', self.state
 
     def connection_lost(self, exc):
-        self._assert_state('INITIALIZED')
+        assert self.state == 'INITIALIZED', self.state
         self.state = 'CLOSED'
         if self.done:
             self.done.set_result(None)
@@ -161,27 +153,23 @@ class MyReadPipeProto(asyncio.Protocol):
         if loop is not None:
             self.done = loop.create_future()
 
-    def _assert_state(self, expected):
-        if self.state != expected:
-            raise AssertionError(f'state: {self.state!r}, expected: {expected!r}')
-
     def connection_made(self, transport):
         self.transport = transport
-        self._assert_state(['INITIAL'])
+        assert self.state == ['INITIAL'], self.state
         self.state.append('CONNECTED')
 
     def data_received(self, data):
-        self._assert_state(['INITIAL', 'CONNECTED'])
+        assert self.state == ['INITIAL', 'CONNECTED'], self.state
         self.nbytes += len(data)
 
     def eof_received(self):
-        self._assert_state(['INITIAL', 'CONNECTED'])
+        assert self.state == ['INITIAL', 'CONNECTED'], self.state
         self.state.append('EOF')
 
     def connection_lost(self, exc):
         if 'EOF' not in self.state:
             self.state.append('EOF')  # It is okay if EOF is missed.
-        self._assert_state(['INITIAL', 'CONNECTED', 'EOF'])
+        assert self.state == ['INITIAL', 'CONNECTED', 'EOF'], self.state
         self.state.append('CLOSED')
         if self.done:
             self.done.set_result(None)
@@ -196,17 +184,13 @@ class MyWritePipeProto(asyncio.BaseProtocol):
         if loop is not None:
             self.done = loop.create_future()
 
-    def _assert_state(self, expected):
-        if self.state != expected:
-            raise AssertionError(f'state: {self.state!r}, expected: {expected!r}')
-
     def connection_made(self, transport):
         self.transport = transport
-        self._assert_state('INITIAL')
+        assert self.state == 'INITIAL', self.state
         self.state = 'CONNECTED'
 
     def connection_lost(self, exc):
-        self._assert_state('CONNECTED')
+        assert self.state == 'CONNECTED', self.state
         self.state = 'CLOSED'
         if self.done:
             self.done.set_result(None)
@@ -225,35 +209,31 @@ class MySubprocessProtocol(asyncio.SubprocessProtocol):
         self.got_data = {1: asyncio.Event(),
                          2: asyncio.Event()}
 
-    def _assert_state(self, expected):
-        if self.state != expected:
-            raise AssertionError(f'state: {self.state!r}, expected: {expected!r}')
-
     def connection_made(self, transport):
         self.transport = transport
-        self._assert_state('INITIAL')
+        assert self.state == 'INITIAL', self.state
         self.state = 'CONNECTED'
         self.connected.set_result(None)
 
     def connection_lost(self, exc):
-        self._assert_state('CONNECTED')
+        assert self.state == 'CONNECTED', self.state
         self.state = 'CLOSED'
         self.completed.set_result(None)
 
     def pipe_data_received(self, fd, data):
-        self._assert_state('CONNECTED')
+        assert self.state == 'CONNECTED', self.state
         self.data[fd] += data
         self.got_data[fd].set()
 
     def pipe_connection_lost(self, fd, exc):
-        self._assert_state('CONNECTED')
+        assert self.state == 'CONNECTED', self.state
         if exc:
             self.disconnects[fd].set_exception(exc)
         else:
             self.disconnects[fd].set_result(exc)
 
     def process_exited(self):
-        self._assert_state('CONNECTED')
+        assert self.state == 'CONNECTED', self.state
         self.returncode = self.transport.get_returncode()
 
 
@@ -1303,7 +1283,7 @@ class EventLoopTestsMixin:
             else:
                 break
         else:
-            self.fail('Can not create socket.')
+            assert False, 'Can not create socket.'
 
         f = self.loop.create_datagram_endpoint(
             lambda: MyDatagramProto(loop=self.loop), sock=sock)

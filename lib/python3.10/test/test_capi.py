@@ -631,14 +631,6 @@ class CAPITest(unittest.TestCase):
         s = _testcapi.pyobject_bytes_from_null()
         self.assertEqual(s, b'<NULL>')
 
-    def test_Py_CompileString(self):
-        # Check that Py_CompileString respects the coding cookie
-        _compile = _testcapi.Py_CompileString
-        code = b"# -*- coding: latin1 -*-\nprint('\xc2\xa4')\n"
-        result = _compile(code)
-        expected = compile(code, "<string>", "exec")
-        self.assertEqual(result.co_consts, expected.co_consts)
-
 
 class TestPendingCalls(unittest.TestCase):
 
@@ -850,13 +842,8 @@ class PyMemDebugTests(unittest.TestCase):
 
     def check(self, code):
         with support.SuppressCrashReport():
-            out = assert_python_failure(
-                '-c', code,
-                PYTHONMALLOC=self.PYTHONMALLOC,
-                # FreeBSD: instruct jemalloc to not fill freed() memory
-                # with junk byte 0x5a, see JEMALLOC(3)
-                MALLOC_CONF="junk:false",
-            )
+            out = assert_python_failure('-c', code,
+                                        PYTHONMALLOC=self.PYTHONMALLOC)
         stderr = out.err
         return stderr.decode('ascii', 'replace')
 
@@ -926,11 +913,7 @@ class PyMemDebugTests(unittest.TestCase):
             except _testcapi.error:
                 os._exit(1)
         ''')
-        assert_python_ok(
-            '-c', code,
-            PYTHONMALLOC=self.PYTHONMALLOC,
-            MALLOC_CONF="junk:false",
-        )
+        assert_python_ok('-c', code, PYTHONMALLOC=self.PYTHONMALLOC)
 
     def test_pyobject_null_is_freed(self):
         self.check_pyobject_is_freed('check_pyobject_null_is_freed')
@@ -1030,21 +1013,13 @@ class Test_ModuleStateAccess(unittest.TestCase):
                 with self.assertRaises(TypeError):
                     increment_count(1, 2, 3)
 
-    def test_get_module_bad_def(self):
-        # _PyType_GetModuleByDef fails gracefully if it doesn't
-        # find what it's looking for.
-        # see bpo-46433
-        instance = self.module.StateAccessType()
-        with self.assertRaises(TypeError):
-            instance.getmodulebydef_bad_def()
-
-    def test_get_module_static_in_mro(self):
-        # Here, the class _PyType_GetModuleByDef is looking for
-        # appears in the MRO after a static type (Exception).
-        # see bpo-46433
-        class Subclass(BaseException, self.module.StateAccessType):
-            pass
-        self.assertIs(Subclass().get_defining_module(), self.module)
+    def test_Py_CompileString(self):
+        # Check that Py_CompileString respects the coding cookie
+        _compile = _testcapi.Py_CompileString
+        code = b"# -*- coding: latin1 -*-\nprint('\xc2\xa4')\n"
+        result = _compile(code)
+        expected = compile(code, "<string>", "exec")
+        self.assertEqual(result.co_consts, expected.co_consts)
 
 
 if __name__ == "__main__":

@@ -2545,8 +2545,10 @@ order (MRO) for bases """
         m2instance.b = 2
         m2instance.a = 1
         self.assertEqual(m2instance.__dict__, "Not a dict!")
-        with self.assertRaises(TypeError):
+        try:
             dir(m2instance)
+        except TypeError:
+            pass
 
         # Two essentially featureless objects, (Ellipsis just inherits stuff
         # from object.
@@ -4060,7 +4062,7 @@ order (MRO) for bases """
         except TypeError:
             pass
         else:
-            self.fail("best_base calculation found wanting")
+            assert 0, "best_base calculation found wanting"
 
     def test_unsubclassable_types(self):
         with self.assertRaises(TypeError):
@@ -4446,8 +4448,6 @@ order (MRO) for bases """
             print("Oops!")
         except RuntimeError:
             pass
-        else:
-            self.fail("Didn't raise RuntimeError")
         finally:
             sys.stdout = test_stdout
 

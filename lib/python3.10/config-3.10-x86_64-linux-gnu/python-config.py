@@ -1,4 +1,4 @@
-#!/code/static-python/python/bin/python3.10
+#!/opt/python-static/bin/python3.10
 # -*- python -*-
 
 # Keep this script in sync with python-config.sh.in

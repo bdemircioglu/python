@@ -500,10 +500,7 @@ class _CallableGenericAlias(GenericAlias):
                 if subparams:
                     subargs = tuple(subst[x] for x in subparams)
                     arg = arg[subargs]
-            if isinstance(arg, tuple):
-                new_args.extend(arg)
-            else:
-                new_args.append(arg)
+            new_args.append(arg)
 
         # args[0] occurs due to things like Z[[int, str, bool]] from PEP 612
         if not isinstance(new_args[0], list):
@@ -871,7 +868,7 @@ class KeysView(MappingView, Set):
     __slots__ = ()
 
     @classmethod
-    def _from_iterable(cls, it):
+    def _from_iterable(self, it):
         return set(it)
 
     def __contains__(self, key):
@@ -889,7 +886,7 @@ class ItemsView(MappingView, Set):
     __slots__ = ()
 
     @classmethod
-    def _from_iterable(cls, it):
+    def _from_iterable(self, it):
         return set(it)
 
     def __contains__(self, item):

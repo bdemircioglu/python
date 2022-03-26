@@ -134,16 +134,16 @@ __all__ = [
 # legitimate imports of those modules.
 
 
-def _type_convert(arg, module=None, *, allow_special_forms=False):
+def _type_convert(arg, module=None):
     """For converting None to type(None), and strings to ForwardRef."""
     if arg is None:
         return type(None)
     if isinstance(arg, str):
-        return ForwardRef(arg, module=module, is_class=allow_special_forms)
+        return ForwardRef(arg, module=module)
     return arg
 
 
-def _type_check(arg, msg, is_argument=True, module=None, *, allow_special_forms=False):
+def _type_check(arg, msg, is_argument=True, module=None, *, is_class=False):
     """Check that the argument is a type, and return it (internal helper).
 
     As a special case, accept None and return type(None) instead. Also wrap strings
@@ -156,21 +156,20 @@ def _type_check(arg, msg, is_argument=True, module=None, *, allow_special_forms=
     We append the repr() of the actual value (truncated to 100 chars).
     """
     invalid_generic_forms = (Generic, Protocol)
-    if not allow_special_forms:
+    if not is_class:
         invalid_generic_forms += (ClassVar,)
         if is_argument:
             invalid_generic_forms += (Final,)
 
-    arg = _type_convert(arg, module=module, allow_special_forms=allow_special_forms)
+    arg = _type_convert(arg, module=module)
     if (isinstance(arg, _GenericAlias) and
             arg.__origin__ in invalid_generic_forms):
         raise TypeError(f"{arg} is not valid as type argument")
-    if arg in (Any, NoReturn, Final, TypeAlias):
+    if arg in (Any, NoReturn, Final):
         return arg
     if isinstance(arg, _SpecialForm) or arg in (Generic, Protocol):
         raise TypeError(f"Plain {arg} is not valid as type argument")
-    if isinstance(arg, (type, TypeVar, ForwardRef, types.UnionType, ParamSpec,
-                        ParamSpecArgs, ParamSpecKwargs)):
+    if isinstance(arg, (type, TypeVar, ForwardRef, types.UnionType, ParamSpec)):
         return arg
     if not callable(arg):
         raise TypeError(f"{msg} Got {arg!r:.100}.")
@@ -320,8 +319,8 @@ def _tp_cache(func=None, /, *, typed=False):
 def _eval_type(t, globalns, localns, recursive_guard=frozenset()):
     """Evaluate all forward references in the given type t.
     For use of globalns and localns see the docstring for get_type_hints().
-    recursive_guard is used to prevent infinite recursion with a recursive
-    ForwardRef.
+    recursive_guard is used to prevent prevent infinite recursion
+    with recursive ForwardRef.
     """
     if isinstance(t, ForwardRef):
         return t._evaluate(globalns, localns, recursive_guard)
@@ -599,10 +598,8 @@ def Concatenate(self, parameters):
         raise TypeError("The last parameter to Concatenate should be a "
                         "ParamSpec variable.")
     msg = "Concatenate[arg, ...]: each arg must be a type."
-    parameters = (*(_type_check(p, msg) for p in parameters[:-1]), parameters[-1])
-    return _ConcatenateGenericAlias(self, parameters,
-                                    _typevar_types=(TypeVar, ParamSpec),
-                                    _paramspec_tvars=True)
+    parameters = tuple(_type_check(p, msg) for p in parameters)
+    return _ConcatenateGenericAlias(self, parameters)
 
 
 @_SpecialForm
@@ -694,7 +691,7 @@ class ForwardRef(_Final, _root=True):
                 eval(self.__forward_code__, globalns, localns),
                 "Forward references must evaluate to types.",
                 is_argument=self.__forward_is_argument__,
-                allow_special_forms=self.__forward_is_class__,
+                is_class=self.__forward_is_class__,
             )
             self.__forward_value__ = _eval_type(
                 type_, globalns, localns, recursive_guard | {self.__forward_arg__}
@@ -708,11 +705,10 @@ class ForwardRef(_Final, _root=True):
         if self.__forward_evaluated__ and other.__forward_evaluated__:
             return (self.__forward_arg__ == other.__forward_arg__ and
                     self.__forward_value__ == other.__forward_value__)
-        return (self.__forward_arg__ == other.__forward_arg__ and
-                self.__forward_module__ == other.__forward_module__)
+        return self.__forward_arg__ == other.__forward_arg__
 
     def __hash__(self):
-        return hash((self.__forward_arg__, self.__forward_module__))
+        return hash(self.__forward_arg__)
 
     def __repr__(self):
         return f'ForwardRef({self.__forward_arg__!r})'
@@ -834,11 +830,6 @@ class ParamSpecArgs(_Final, _Immutable, _root=True):
     def __repr__(self):
         return f"{self.__origin__.__name__}.args"
 
-    def __eq__(self, other):
-        if not isinstance(other, ParamSpecArgs):
-            return NotImplemented
-        return self.__origin__ == other.__origin__
-
 
 class ParamSpecKwargs(_Final, _Immutable, _root=True):
     """The kwargs for a ParamSpec object.
@@ -858,11 +849,6 @@ class ParamSpecKwargs(_Final, _Immutable, _root=True):
     def __repr__(self):
         return f"{self.__origin__.__name__}.kwargs"
 
-    def __eq__(self, other):
-        if not isinstance(other, ParamSpecKwargs):
-            return NotImplemented
-        return self.__origin__ == other.__origin__
-
 
 class ParamSpec(_Final, _Immutable, _TypeVarLike, _root=True):
     """Parameter specification variable.
@@ -875,7 +861,7 @@ class ParamSpec(_Final, _Immutable, _TypeVarLike, _root=True):
     type checkers.  They are used to forward the parameter types of one
     callable to another callable, a pattern commonly found in higher order
     functions and decorators.  They are only valid when used in ``Concatenate``,
-    or as the first argument to ``Callable``, or as parameters for user-defined
+    or s the first argument to ``Callable``, or as parameters for user-defined
     Generics.  See class Generic for more information on generic types.  An
     example for annotating a decorator::
 
@@ -978,7 +964,7 @@ class _BaseGenericAlias(_Final, _root=True):
             return self._name or self.__origin__.__name__
 
         # We are careful for copy and pickle.
-        # Also for simplicity we don't relay any dunder names
+        # Also for simplicity we just don't relay all dunder names
         if '__origin__' in self.__dict__ and not _is_dunder(attr):
             return getattr(self.__origin__, attr)
         raise AttributeError(attr)
@@ -997,9 +983,6 @@ class _BaseGenericAlias(_Final, _root=True):
         raise TypeError("Subscripted generics cannot be used with"
                         " class and instance checks")
 
-    def __dir__(self):
-        return list(set(super().__dir__()
-                + [attr for attr in dir(self.__origin__) if not _is_dunder(attr)]))
 
 # Special typing constructs Union, Optional, Generic, Callable and Tuple
 # use three special attributes for internal bookkeeping of generic types:
@@ -1081,9 +1064,7 @@ class _GenericAlias(_BaseGenericAlias, _root=True):
         return self.copy_with(tuple(new_args))
 
     def copy_with(self, params):
-        return self.__class__(self.__origin__, params, name=self._name, inst=self._inst,
-                              _typevar_types=self._typevar_types,
-                              _paramspec_tvars=self._paramspec_tvars)
+        return self.__class__(self.__origin__, params, name=self._name, inst=self._inst)
 
     def __repr__(self):
         if self._name:
@@ -1285,15 +1266,10 @@ class _LiteralGenericAlias(_GenericAlias, _root=True):
 
 
 class _ConcatenateGenericAlias(_GenericAlias, _root=True):
-    def copy_with(self, params):
-        if isinstance(params[-1], (list, tuple)):
-            return (*params[:-1], *params[-1])
-        if isinstance(params[-1], _ConcatenateGenericAlias):
-            params = (*params[:-1], *params[-1].__args__)
-        elif not isinstance(params[-1], ParamSpec):
-            raise TypeError("The last parameter to Concatenate should be a "
-                            "ParamSpec variable.")
-        return super().copy_with(params)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs,
+                         _typevar_types=(TypeVar, ParamSpec),
+                         _paramspec_tvars=True)
 
 
 class Generic:
@@ -1698,7 +1674,7 @@ class Annotated:
                             "with at least two arguments (a type and an "
                             "annotation).")
         msg = "Annotated[t, ...]: t must be a type."
-        origin = _type_check(params[0], msg, allow_special_forms=True)
+        origin = _type_check(params[0], msg)
         metadata = tuple(params[1:])
         return _AnnotatedAlias(origin, metadata)
 

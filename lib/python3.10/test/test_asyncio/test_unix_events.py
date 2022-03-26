@@ -26,10 +26,6 @@ from asyncio import unix_events
 from test.test_asyncio import utils as test_utils
 
 
-def tearDownModule():
-    asyncio.set_event_loop_policy(None)
-
-
 MOCK_ANY = mock.ANY
 
 
@@ -38,9 +34,12 @@ def EXITCODE(exitcode):
 
 
 def SIGNAL(signum):
-    if not 1 <= signum <= 68:
-        raise AssertionError(f'invalid signum {signum}')
+    assert 1 <= signum <= 68
     return 32768 - signum
+
+
+def tearDownModule():
+    asyncio.set_event_loop_policy(None)
 
 
 def close_pipe_transport(transport):

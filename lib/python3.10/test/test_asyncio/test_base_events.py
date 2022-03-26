@@ -18,7 +18,7 @@ from test import support
 from test.support.script_helper import assert_python_ok
 from test.support import os_helper
 from test.support import socket_helper
-import warnings
+
 
 MOCK_ANY = mock.ANY
 PY34 = sys.version_info >= (3, 4)
@@ -643,7 +643,7 @@ class BaseEventLoopTests(test_utils.TestCase):
                                 'Exception in callback.*zero'),
                         exc_info=(ZeroDivisionError, MOCK_ANY, MOCK_ANY))
 
-        self.assertFalse(mock_handler.called)
+        assert not mock_handler.called
 
     def test_set_exc_handler_broken(self):
         def run_loop():
@@ -800,17 +800,6 @@ class BaseEventLoopTests(test_utils.TestCase):
         # make warnings quiet
         task._log_destroy_pending = False
         coro.close()
-
-    def test_create_task_error_closes_coro(self):
-        async def test():
-            pass
-        loop = asyncio.new_event_loop()
-        loop.close()
-        with warnings.catch_warnings(record=True) as w:
-            with self.assertRaises(RuntimeError):
-                asyncio.ensure_future(test(), loop=loop)
-            self.assertEqual(len(w), 0)
-
 
     def test_create_named_task_with_default_factory(self):
         async def test():
@@ -1014,26 +1003,22 @@ class MyProto(asyncio.Protocol):
         if create_future:
             self.done = asyncio.get_running_loop().create_future()
 
-    def _assert_state(self, *expected):
-        if self.state not in expected:
-            raise AssertionError(f'state: {self.state!r}, expected: {expected!r}')
-
     def connection_made(self, transport):
         self.transport = transport
-        self._assert_state('INITIAL')
+        assert self.state == 'INITIAL', self.state
         self.state = 'CONNECTED'
         transport.write(b'GET / HTTP/1.0\r\nHost: example.com\r\n\r\n')
 
     def data_received(self, data):
-        self._assert_state('CONNECTED')
+        assert self.state == 'CONNECTED', self.state
         self.nbytes += len(data)
 
     def eof_received(self):
-        self._assert_state('CONNECTED')
+        assert self.state == 'CONNECTED', self.state
         self.state = 'EOF'
 
     def connection_lost(self, exc):
-        self._assert_state('CONNECTED', 'EOF')
+        assert self.state in ('CONNECTED', 'EOF'), self.state
         self.state = 'CLOSED'
         if self.done:
             self.done.set_result(None)
@@ -1048,24 +1033,20 @@ class MyDatagramProto(asyncio.DatagramProtocol):
         if create_future:
             self.done = loop.create_future()
 
-    def _assert_state(self, expected):
-        if self.state != expected:
-            raise AssertionError(f'state: {self.state!r}, expected: {expected!r}')
-
     def connection_made(self, transport):
         self.transport = transport
-        self._assert_state('INITIAL')
+        assert self.state == 'INITIAL', self.state
         self.state = 'INITIALIZED'
 
     def datagram_received(self, data, addr):
-        self._assert_state('INITIALIZED')
+        assert self.state == 'INITIALIZED', self.state
         self.nbytes += len(data)
 
     def error_received(self, exc):
-        self._assert_state('INITIALIZED')
+        assert self.state == 'INITIALIZED', self.state
 
     def connection_lost(self, exc):
-        self._assert_state('INITIALIZED')
+        assert self.state == 'INITIALIZED', self.state
         self.state = 'CLOSED'
         if self.done:
             self.done.set_result(None)
@@ -1414,7 +1395,7 @@ class BaseEventLoopWithSelectorTests(test_utils.TestCase):
         addr = ('00:01:02:03:04:05', 1)
 
         def getaddrinfo(host, port, *args, **kw):
-            self.assertEqual((host, port), addr)
+            assert (host, port) == addr
             return [(999, 1, 999, '', (addr, 1))]
 
         m_socket.getaddrinfo = getaddrinfo
@@ -1713,7 +1694,7 @@ class BaseEventLoopWithSelectorTests(test_utils.TestCase):
             lambda: MyDatagramProto(create_future=True, loop=self.loop),
             family=socket.AF_UNIX)
         transport, protocol = self.loop.run_until_complete(fut)
-        self.assertEqual(transport._sock.family, socket.AF_UNIX)
+        assert transport._sock.family == socket.AF_UNIX
         transport.close()
         self.loop.run_until_complete(protocol.done)
         self.assertEqual('CLOSED', protocol.state)

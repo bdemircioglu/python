@@ -17,7 +17,6 @@ import itertools
 import types
 import warnings
 import weakref
-from types import GenericAlias
 
 from . import base_tasks
 from . import coroutines
@@ -124,7 +123,8 @@ class Task(futures._PyFuture):  # Inherit Python Task implementation
             self._loop.call_exception_handler(context)
         super().__del__()
 
-    __class_getitem__ = classmethod(GenericAlias)
+    def __class_getitem__(cls, type):
+        return cls
 
     def _repr_info(self):
         return base_tasks._task_repr_info(self)
@@ -621,23 +621,17 @@ def _ensure_future(coro_or_future, *, loop=None):
             raise ValueError('The future belongs to a different loop than '
                             'the one specified as the loop argument')
         return coro_or_future
-    called_wrap_awaitable = False
+
     if not coroutines.iscoroutine(coro_or_future):
         if inspect.isawaitable(coro_or_future):
             coro_or_future = _wrap_awaitable(coro_or_future)
-            called_wrap_awaitable = True
         else:
             raise TypeError('An asyncio.Future, a coroutine or an awaitable '
                             'is required')
 
     if loop is None:
         loop = events._get_event_loop(stacklevel=4)
-    try:
-        return loop.create_task(coro_or_future)
-    except RuntimeError: 
-        if not called_wrap_awaitable:
-            coro_or_future.close()
-        raise
+    return loop.create_task(coro_or_future)
 
 
 @types.coroutine
@@ -721,7 +715,7 @@ def gather(*coros_or_futures, return_exceptions=False):
         nonlocal nfinished
         nfinished += 1
 
-        if outer is None or outer.done():
+        if outer.done():
             if not fut.cancelled():
                 # Mark exception retrieved.
                 fut.exception()
@@ -777,7 +771,6 @@ def gather(*coros_or_futures, return_exceptions=False):
     nfuts = 0
     nfinished = 0
     loop = None
-    outer = None  # bpo-46672
     for arg in coros_or_futures:
         if arg not in arg_to_fut:
             fut = _ensure_future(arg, loop=loop)

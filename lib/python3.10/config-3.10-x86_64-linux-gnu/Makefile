@@ -30,12 +30,12 @@ MODLIBS=           $(LOCALMODLIBS) $(BASEMODLIBS)
 VERSION=	3.10
 srcdir=		.
 
-abs_srcdir=	/code/static-python/Python-3.10.4
-abs_builddir=	/code/static-python/Python-3.10.4
+abs_srcdir=	/Python-3.10.1
+abs_builddir=	/Python-3.10.1
 
 
-CC=		/code/static-python/musl/bin/musl-clang
-CXX=		c++
+CC=		gcc -pthread
+CXX=		g++ -pthread
 MAINCC=		$(CC)
 LINKCC=		$(PURIFY) $(MAINCC)
 AR=		ar
@@ -46,11 +46,11 @@ LIBPYTHON=
 GITVERSION=	
 GITTAG=		
 GITBRANCH=	
-PGO_PROF_GEN_FLAG=-fprofile-instr-generate
-PGO_PROF_USE_FLAG=-fprofile-instr-use=code.profclangd
-LLVM_PROF_MERGER='' merge -output=code.profclangd *.profclangr
-LLVM_PROF_FILE=LLVM_PROFILE_FILE="code-%p.profclangr"
-LLVM_PROF_ERR=yes
+PGO_PROF_GEN_FLAG=-fprofile-generate
+PGO_PROF_USE_FLAG=-fprofile-use -fprofile-correction
+LLVM_PROF_MERGER=true
+LLVM_PROF_FILE=
+LLVM_PROF_ERR=no
 DTRACE=         
 DFLAGS=         
 DTRACE_HEADERS= 
@@ -79,19 +79,19 @@ MAKESETUP=      $(srcdir)/Modules/makesetup
 
 # Compiler options
 OPT=		-DNDEBUG -g -fwrapv -O3 -Wall
-BASECFLAGS=	 -fno-strict-aliasing -Wsign-compare -Wunreachable-code
+BASECFLAGS=	 -Wno-unused-result -Wsign-compare
 BASECPPFLAGS=	
-CONFIGURE_CFLAGS=	-static
+CONFIGURE_CFLAGS=	
 # CFLAGS_NODIST is used for building the interpreter and stdlib C extensions.
 # Use it when a compiler flag should _not_ be part of the distutils CFLAGS
 # once Python is installed (Issue #21121).
-CONFIGURE_CFLAGS_NODIST= -std=c99 -Werror=implicit-function-declaration -fvisibility=hidden
+CONFIGURE_CFLAGS_NODIST= -std=c99 -Wextra -Wno-unused-result -Wno-unused-parameter -Wno-missing-field-initializers -Werror=implicit-function-declaration -fvisibility=hidden
 # LDFLAGS_NODIST is used in the same manner as CFLAGS_NODIST.
 # Use it when a linker flag should _not_ be part of the distutils LDFLAGS
 # once Python is installed (bpo-35257)
 CONFIGURE_LDFLAGS_NODIST=
-CONFIGURE_CPPFLAGS=	-static
-CONFIGURE_LDFLAGS=	-static
+CONFIGURE_CPPFLAGS=	
+CONFIGURE_LDFLAGS=	
 # Avoid assigning CFLAGS, LDFLAGS, etc. so users can use them on the
 # command line to append to these values without stomping the pre-set
 # values.
@@ -118,7 +118,7 @@ PY_CORE_CFLAGS=	$(PY_STDMODULE_CFLAGS) -DPy_BUILD_CORE
 # Linker flags used for building the interpreter object files
 PY_CORE_LDFLAGS=$(PY_LDFLAGS) $(PY_LDFLAGS_NODIST)
 # Strict or non-strict aliasing flags used to compile dtoa.c, see above
-CFLAGS_ALIASING=-fno-strict-aliasing
+CFLAGS_ALIASING=
 
 
 # Machine-dependent subdirectories
@@ -129,7 +129,7 @@ MULTIARCH=	x86_64-linux-gnu
 MULTIARCH_CPPFLAGS = -DMULTIARCH=\"x86_64-linux-gnu\"
 
 # Install prefix for architecture-independent files
-prefix=		/code/static-python/python
+prefix=		/opt/python-static
 
 # Install prefix for architecture-dependent files
 exec_prefix=	${prefix}
@@ -202,9 +202,9 @@ RUNSHARED=
 ENSUREPIP=      upgrade
 
 # OpenSSL options for setup.py so sysconfig can pick up AC_SUBST() vars.
-OPENSSL_INCLUDES=
+OPENSSL_INCLUDES=-I/opt/openssl/include
 OPENSSL_LIBS=-lssl -lcrypto
-OPENSSL_LDFLAGS=
+OPENSSL_LDFLAGS=-L/opt/openssl/lib
 OPENSSL_RPATH=
 
 # Default zoneinfo.TZPATH. Added here to expose it in sysconfig.get_config_var
@@ -217,7 +217,7 @@ EXEMODE=	755
 FILEMODE=	644
 
 # configure script arguments
-CONFIG_ARGS=	 '--prefix=/code/static-python/python' '--disable-shared' 'LDFLAGS=-static' 'CFLAGS=-static' 'CPPFLAGS=-static' 'CC=/code/static-python/musl/bin/musl-clang'
+CONFIG_ARGS=	 '--prefix=/opt/python-static' '--with-openssl=/opt/openssl' '--disable-shared'
 
 
 # Subdirectories with code
@@ -245,7 +245,7 @@ PY_ENABLE_SHARED=	0
 STATIC_LIBPYTHON=	1
 
 
-LIBS=		-ldl  -lm
+LIBS=		-lcrypt -lpthread -ldl  -lutil -lm
 LIBM=		-lm
 LIBC=		
 SYSLIBS=	$(LIBM) $(LIBC)
@@ -260,16 +260,16 @@ LIBOBJS=
 PYTHON=		python$(EXE)
 BUILDPYTHON=	python$(BUILDEXE)
 
-PYTHON_FOR_REGEN?=python3
+PYTHON_FOR_REGEN?=python
 UPDATE_FILE=$(PYTHON_FOR_REGEN) $(srcdir)/Tools/scripts/update_file.py
 PYTHON_FOR_BUILD=./$(BUILDPYTHON) -E
 _PYTHON_HOST_PLATFORM=
-BUILD_GNU_TYPE=	x86_64-pc-linux-musl
-HOST_GNU_TYPE=	x86_64-pc-linux-musl
+BUILD_GNU_TYPE=	x86_64-pc-linux-gnu
+HOST_GNU_TYPE=	x86_64-pc-linux-gnu
 
 # Tcl and Tk config info from --with-tcltk-includes and -libs options
-TCLTK_INCLUDES=	-I/usr/include/tcl8.6
-TCLTK_LIBS=	-ltk8.6 -ltkstub8.6 -ltcl8.6 -ltclstub8.6
+TCLTK_INCLUDES=	
+TCLTK_LIBS=	
 
 # The task to run while instrumented when building the profile-opt target.
 # To speed up profile generation, we don't run the full unit test suite

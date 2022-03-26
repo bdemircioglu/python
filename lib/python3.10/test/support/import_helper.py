@@ -2,7 +2,6 @@ import contextlib
 import importlib
 import importlib.util
 import os
-import shutil
 import sys
 import unittest
 import warnings
@@ -59,7 +58,7 @@ def make_legacy_pyc(source):
     pyc_file = importlib.util.cache_from_source(source)
     up_one = os.path.dirname(os.path.abspath(source))
     legacy_pyc = os.path.join(up_one, source + 'c')
-    shutil.move(pyc_file, legacy_pyc)
+    os.rename(pyc_file, legacy_pyc)
     return legacy_pyc
 
 

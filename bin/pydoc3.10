@@ -1,4 +1,4 @@
-#!/code/static-python/python/bin/python3.10
+#!/opt/python-static/bin/python3.10
 
 import pydoc
 if __name__ == '__main__':
